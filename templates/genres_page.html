@@ -1,0 +1,222 @@
+{% extends "base_layout.html" %}
+
+{% block title %}Browse by Genre - BingeWatch{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Ensure body allows for full width/height sections if not already default */
+    html, body { 
+        /* overflow-x: hidden; /* Prevent horizontal scroll if genre sections are truly 100vw */
+        /* Consider if you want to disable main scrollbar while on this page if using full-screen scroll */
+    }
+    .genres-container-fullscreen { 
+        width: 100%; 
+        /* No margin/padding if sections are truly full screen edge-to-edge */
+    }
+    .genres-header { 
+        text-align: center; 
+        padding: 25px 15px; 
+        background-color: #101010; /* Darker background for distinction */
+        position: sticky; /* Make genre page header sticky */
+        top: 60px; /* Below main site header */
+        z-index: 1001; /* Above genre sections but below main header/sidebar */
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+    .genres-header h1 { 
+        color: #e50914; 
+        font-size: 2.2em; /* Slightly smaller than main hero */
+        margin: 0; 
+    }
+    
+    #genreSectionsDisplay { /* Container for all the full-screen genre sections */
+        /* This will just stack block elements vertically */
+    }
+
+    .genre-section-fullscreen {
+        height: calc(100vh - 60px); /* Full viewport height minus the site header */
+        /* If genres_header is also sticky, subtract its height too */
+        /* height: calc(100vh - 60px - ANOTHER_HEADER_HEIGHT); */
+        width: 100vw; 
+        position: relative; 
+        display: flex;
+        align-items: center; 
+        justify-content: center; 
+        text-align: center;
+        background-color: #181818; /* Fallback background */
+        background-size: cover;
+        background-position: center center;
+        overflow: hidden; 
+        scroll-snap-align: start; /* For snap scrolling (optional) */
+    }
+    .genre-section-fullscreen::before { 
+        content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 70%, rgba(0,0,0,0.9) 100%); /* Adjusted gradient */
+        z-index: 1;
+    }
+    .genre-section-fullscreen a { 
+        position: relative; z-index: 2; padding: 20px; color: #fff;
+        text-decoration: none; font-size: 3em; font-weight: 700; 
+        text-shadow: 2px 2px 8px rgba(0,0,0,0.9); 
+        transition: transform 0.3s ease, color 0.3s ease; display: block; 
+    }
+    .genre-section-fullscreen a:hover, 
+    .genre-section-fullscreen a:focus {
+        transform: scale(1.03); color: #ff4554; 
+    }
+    .loading-genres, .error-genres { 
+        display: flex; align-items: center; justify-content: center;
+        height: 80vh; text-align: center; font-size: 1.2em; color: #888; padding: 30px 20px;
+    }
+    .genre-section-fullscreen.loading-banner::after { 
+        content: ''; display: block; width: 40px; height: 40px;
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        border: 4px solid rgba(255,255,255,0.2); border-top-color: #fff;
+        border-radius: 50%; animation: spin 1s linear infinite; z-index: 3;
+    }
+    @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+    /* Optional: For enabling snap scrolling on the container of genre sections */
+    #genreSectionsDisplay.snap-scroll-container {
+        scroll-snap-type: y mandatory; /* Snap on vertical scroll */
+        overflow-y: scroll; /* Must be scrollable for snap to work */
+        height: calc(100vh - 60px); /* If genres_header is NOT sticky and part of scroll */
+                                  /* Or just 100vh if genres_header is outside and fixed */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="genres-container-fullscreen">
+    <div class="genres-header">
+        <h1>Browse by Genre</h1>
+    </div>
+
+    {# Add class for snap scroll if you want that behavior #}
+    <div id="genreSectionsDisplay" class="snap-scroll-container"> 
+        <p class="loading-genres">Loading genres...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const genreSectionsDisplay = document.getElementById('genreSectionsDisplay');
+        if (!genreSectionsDisplay) {
+            console.error("Genre sections display container not found!");
+            return;
+        }
+
+        let usedBannerUrls = new Set(); 
+
+        async function fetchAndSetGenreSection(genreName, genreSectionElement) {
+            genreSectionElement.classList.add('loading-banner');
+            try {
+                const bannerOptionsResponse = await fetch(`{{ url_for('get_genre_top_banner_options_api', genre_name='TEMP') }}`.replace('TEMP', encodeURIComponent(genreName)));
+                let chosenBannerUrl = '{{ url_for('static', filename='banner_placeholder.jpg') }}'; 
+
+                if (bannerOptionsResponse.ok) {
+                    const bannerOptions = await bannerOptionsResponse.json();
+                    if (bannerOptions && bannerOptions.length > 0) {
+                        let foundUniqueBanner = false;
+                        for (let anime of bannerOptions) {
+                            const potentialBanner = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large;
+                            if (potentialBanner && !usedBannerUrls.has(potentialBanner)) {
+                                chosenBannerUrl = potentialBanner;
+                                usedBannerUrls.add(potentialBanner); 
+                                foundUniqueBanner = true;
+                                break; 
+                            }
+                        }
+                        if (!foundUniqueBanner && bannerOptions[0]) { 
+                            const fallbackBanner = bannerOptions[0].bannerImage || bannerOptions[0].coverImage?.extraLarge || bannerOptions[0].coverImage?.large;
+                            if (fallbackBanner) chosenBannerUrl = fallbackBanner;
+                        }
+                    }
+                }
+                genreSectionElement.style.backgroundImage = `url('${chosenBannerUrl}')`;
+            } catch (err) {
+                console.error(`Failed to load banner options for ${genreName}:`, err);
+                genreSectionElement.style.backgroundImage = `url('{{ url_for('static', filename='banner_placeholder.jpg') }}')`;
+            } finally {
+                genreSectionElement.classList.remove('loading-banner');
+            }
+        }
+
+        try {
+            const response = await fetch("{{ url_for('get_all_genres_api') }}");
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const genres = await response.json();
+
+            if (genres.error) {
+                genreSectionsDisplay.innerHTML = `<p class="error-genres">${genres.error}</p>`;
+            } else if (genres && genres.length > 0) {
+                genreSectionsDisplay.innerHTML = ''; 
+                const genreSections = []; 
+                genres.forEach(genre => {
+                    if (genre && typeof genre === 'string') {
+                        const section = document.createElement('section');
+                        section.classList.add('genre-section-fullscreen');
+                        section.dataset.genreName = genre; 
+                        section.id = `genre-${genre.replace(/\s+/g, '-').toLowerCase()}`; // Create an ID for linking
+
+                        const link = document.createElement('a');
+                        link.href = "{{ url_for('category_page', category_key='genre', name='TEMP_GENRE_NAME') }}".replace('TEMP_GENRE_NAME', encodeURIComponent(genre));
+                        link.textContent = genre;
+                        
+                        section.appendChild(link);
+                        genreSectionsDisplay.appendChild(section);
+                        genreSections.push(section);
+                    }
+                });
+
+                if ('IntersectionObserver' in window) {
+                    const bannerObserverOptions = { 
+                        root: null, // Observe intersections relative to the viewport
+                        rootMargin: '0px 0px 100px 0px', // When item is 100px from bottom edge
+                        threshold: 0.01 // When at least 1% of the item is visible
+                    };
+                    let delay = 0;
+                    const delayIncrement = 200; // Stagger API calls
+
+                    const bannerObserver = new IntersectionObserver((entries, observer) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const section = entry.target;
+                                const currentBg = section.style.backgroundImage;
+                                if (section.dataset.genreName && (!currentBg || currentBg.includes('banner_placeholder.jpg') || currentBg === "") && !section.classList.contains('loading-banner') ) { 
+                                    setTimeout(() => { 
+                                        fetchAndSetGenreSection(section.dataset.genreName, section);
+                                    }, delay);
+                                    delay += delayIncrement; 
+                                }
+                                // Unobserve after first intersection to load only once
+                                // If you want banners to reload if scrolled out and back in, comment this out
+                                observer.unobserve(section); 
+                            }
+                        });
+                        // Reset delay for next batch of intersections if observer isn't unobserving immediately
+                        setTimeout(() => { delay = 0; }, delayIncrement * entries.length + 100); 
+                    }, bannerObserverOptions);
+                    genreSections.forEach(section => bannerObserver.observe(section));
+                } else { 
+                    let fallbackDelay = 0;
+                    genreSections.forEach(section => {
+                        if (section.dataset.genreName) {
+                            setTimeout(() => {
+                                fetchAndSetGenreSection(section.dataset.genreName, section);
+                            }, fallbackDelay);
+                            fallbackDelay += 300; 
+                        }
+                    });
+                }
+            } else {
+                genreSectionsDisplay.innerHTML = '<p class="error-genres">No genres found.</p>';
+            }
+        } catch (error) {
+            console.error("Failed to fetch genres list:", error);
+            genreSectionsDisplay.innerHTML = '<p class="error-genres">Could not load genres. Please try again later.</p>';
+        }
+    });
+</script>
+{% endblock %}

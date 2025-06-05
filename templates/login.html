@@ -1,0 +1,62 @@
+{% extends "base_layout.html" %}
+
+{% block title %}{{ title }} - BingeWatch{% endblock %}
+
+{% block head_extra %}
+    <!-- Uses auth form styles from style.css or can have specific styles here -->
+    <style>
+        /* Styles specific to login/register pages can be here if not in main style.css */
+        /* The .auth-form-container and related styles should be in your main style.css */
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container"> {# General container for centering content #}
+    <div class="auth-form-container">
+        <h2>Login to BingeWatch</h2>
+
+        {# Flash messages are now handled in base_layout.html directly above this block #}
+        {# If you want them specifically inside this auth-form-container, uncomment below
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flash-messages" style="margin-bottom: 20px;">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+        #}
+
+        <form method="POST" action="" novalidate> {# novalidate disables browser's default validation #}
+            {{ form.hidden_tag() }} {# CSRF token #}
+            <div class="form-group">
+                {{ form.email.label }}
+                {{ form.email(class_="form-control", placeholder="Enter your email") }}
+                {% if form.email.errors %}
+                    {% for error in form.email.errors %}<span class="error-message">{{ error }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.password.label }}
+                {{ form.password(class_="form-control", placeholder="Enter your password") }}
+                {% if form.password.errors %}
+                    {% for error in form.password.errors %}<span class="error-message">{{ error }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            <div class="form-group form-check">
+                {{ form.remember(class="form-check-input") }}
+                {{ form.remember.label(class="form-check-label") }}
+            </div>
+            <div class="form-group">
+                {{ form.submit(class="form-submit-btn") }}
+            </div>
+        </form>
+        <div class="auth-links">
+            Need an account? <a href="{{ url_for('register_page') }}">Sign Up Now</a>
+            <br>
+            {# <a href="#">Forgot Password?</a> #} {# Placeholder for future feature #}
+        </div>
+    </div>
+</div>
+{% endblock %}

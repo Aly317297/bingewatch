@@ -1,0 +1,37 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.sqlite3 # Or just bingewatch.db if you only have one
+.env # If you ever use a .env file for local environment variables
+
+# PyInstaller / Build Artifacts (if you ever go back to EXE)
+dist/
+build/
+*.spec
+
+# FFmpeg & Node.js Runtime (don't commit these large binaries)
+ffmpeg.exe
+*.dll # All DLLs in the root
+node_runtime/
+
+# Consumet API specific ignores (these go inside api.consumet.org/ if it were a separate repo)
+
+# Ignore .git folder inside Consumet API directory
+api.consumet.org/.git/
+
+# But since it's a subfolder you're bundling, you might just ignore its node_modules here too.
+api.consumet.org/node_modules/
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+
+# Operating System
+.DS_Store # macOS
+Thumbs.db # Windows

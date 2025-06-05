@@ -1,0 +1,346 @@
+{% extends "base_layout.html" %}
+
+{% block title %}Home - BingeWatch{% endblock %}
+
+{% block head_extra %}
+    <!-- index.html specific styles could go here if needed -->
+{% endblock %}
+
+{% block content %}
+<div id="search-results-section" class="anime-section" style="display: none;">
+    <h2>Search Results</h2>
+    <div id="searchResults" class="anime-grid search-grid"></div>
+    <button id="backToHomeButton" style="display:none;">Back to Home View</button>
+</div>
+
+<div id="homepage-view">
+    <section id="heroBannerCarousel" class="hero-banner-carousel">
+        <h2 style="position: absolute; top: 20px; left: 20px; z-index: 4; color: white; text-shadow: 1px 1px 4px rgba(0,0,0,0.7); font-size: 1.5em; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 4px;">
+            <a href="{{ url_for('category_page', category_key='top_airing') }}" style="color:white; text-decoration:none;">Highlights »</a>
+        </h2>
+        <p class="carousel-loading-message">Loading Highlights...</p> 
+    </section>
+
+    <section class="carousel-section">
+        <h2><a href="{{ url_for('category_page', category_key='next_episode_releases') }}">Next Episode Releases »</a></h2>
+        <div class="anime-carousel-wrapper">
+            <button class="carousel-btn prev" aria-label="Previous" data-target="nextEpisodeCarousel"><</button>
+            <div class="anime-carousel lazy-load-carousel" id="nextEpisodeCarousel"
+                 data-api-url="/api/home/next_episode_releases" data-section-title="Next Episode Releases">
+                 <p class="carousel-loading-message">Loading...</p>
+            </div>
+            <button class="carousel-btn next" aria-label="Next" data-target="nextEpisodeCarousel">></button>
+        </div>
+    </section>
+
+    <section class="carousel-section">
+        <h2><a href="{{ url_for('category_page', category_key='popular_this_season') }}">Popular This Season »</a></h2>
+        <div class="anime-carousel-wrapper">
+            <button class="carousel-btn prev" aria-label="Previous" data-target="popularThisSeasonCarousel"><</button>
+            <div class="anime-carousel lazy-load-carousel" id="popularThisSeasonCarousel"
+                 data-api-url="/api/home/popular_this_season" data-section-title="Popular This Season">
+                 <p class="carousel-loading-message">Loading...</p>
+            </div>
+            <button class="carousel-btn next" aria-label="Next" data-target="popularThisSeasonCarousel">></button>
+        </div>
+    </section>
+    
+    <section class="carousel-section">
+        <h2><a href="{{ url_for('category_page', category_key='top_all_time') }}">Top Rated All Time »</a></h2>
+        <div class="anime-carousel-wrapper">
+            <button class="carousel-btn prev" aria-label="Previous" data-target="topAllTimeCarousel"><</button>
+            <div class="anime-carousel lazy-load-carousel" id="topAllTimeCarousel"
+                 data-api-url="/api/home/top_all_time" data-section-title="Top All Time">
+                 <p class="carousel-loading-message">Loading...</p>
+            </div>
+            <button class="carousel-btn next" aria-label="Next" data-target="topAllTimeCarousel">></button>
+        </div>
+    </section>
+
+    <section class="carousel-section">
+        <h2><a href="{{ url_for('category_page', category_key='highly_rated_last_year') }}">Highly Rated Last Year »</a></h2>
+        <div class="anime-carousel-wrapper">
+            <button class="carousel-btn prev" aria-label="Previous" data-target="highlyRatedLastYearCarousel"><</button>
+            <div class="anime-carousel lazy-load-carousel" id="highlyRatedLastYearCarousel"
+                 data-api-url="/api/home/highly_rated_last_year" data-section-title="Highly Rated Last Year">
+                 <p class="carousel-loading-message">Loading...</p>
+            </div>
+            <button class="carousel-btn next" aria-label="Next" data-target="highlyRatedLastYearCarousel">></button>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    const searchResultsContainer = document.getElementById('searchResults');
+    const baseSearchForm = document.getElementById('baseSearchForm'); 
+    const searchResultsSection = document.getElementById('search-results-section');
+    const backToHomeButton = document.getElementById('backToHomeButton');
+    const homepageViewDiv = document.getElementById('homepage-view');
+
+    const heroBannerCarouselElement = document.getElementById('heroBannerCarousel');
+    let heroSlidesData = []; 
+    let currentHeroSlideIndex = 0;
+    let heroInterval;
+
+    function formatTimeUntilAiring(seconds) {
+        if (seconds === null || typeof seconds === 'undefined') return 'N/A';
+        if (seconds < 0) return 'Aired';
+        const d = Math.floor(seconds / (86400)); 
+        const h = Math.floor((seconds % 86400) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        let parts = [];
+        if (d > 0) parts.push(`${d}d`); 
+        if (h > 0) parts.push(`${h}h`);
+        if (m > 0 && d < 1) parts.push(`${m}m`); 
+        if (d === 0 && h === 0 && m < 5 && m > 0) return `~${m}m`;
+        if (d === 0 && h === 0 && m === 0 && seconds > 0) return 'Soon!';
+        if (parts.length === 0 && seconds > 0) return '~1m';
+        if (parts.length === 0 && seconds <= 0) return 'Airing Now';
+        return parts.join(' ') + (parts.length > 0 ? ' left' : 'Now');
+    }
+
+    function createHeroSlide(anime) {
+        const slide = document.createElement('div');
+        slide.classList.add('hero-banner-slide');
+        const bannerSrc = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large || '{{ url_for('static', filename='banner_placeholder.jpg') }}';
+        slide.style.backgroundImage = `linear-gradient(to right, rgba(20,20,20,0.85) 0%, rgba(20,20,20,0.5) 40%, rgba(20,20,20,0) 70%), url("${bannerSrc}")`;
+        let episodesText = '';
+        if (anime.nextEpisodeNumber && anime.timeUntilAiring !== null && anime.timeUntilAiring >= 0) { 
+            episodesText = `Next Ep ${anime.nextEpisodeNumber}: ${formatTimeUntilAiring(anime.timeUntilAiring)}`;
+        } else if (anime.episodes) { episodesText = `Total Ep: ${anime.episodes}`; } 
+        else { episodesText = 'N/A Eps'; }
+        const titleText = anime.title?.userPreferred || anime.title?.romaji || anime.title?.english || 'Untitled Anime';
+        slide.innerHTML = `
+            <a href="/anime/${anime.id}" class="hero-slide-link-wrapper">
+                <div class="hero-banner-content container">
+                    <div class="hero-banner-poster">
+                        <img src="${anime.coverImage?.large || anime.coverImage?.medium || '{{ url_for('static', filename='placeholder.png') }}'}" alt="${titleText.replace(/"/g, '"')}" loading="lazy" onerror="this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                    </div>
+                    <div class="hero-banner-info">
+                        <h2 class="hero-banner-title">${titleText}</h2>
+                        <div class="hero-banner-meta">
+                            ${anime.averageScore ? `<span class="meta-score">⭐ ${anime.averageScore / 10}</span>` : ''}
+                            <span class="meta-episodes">${episodesText}</span>
+                            ${anime.format ? `<span class="meta-format">${anime.format.replace('_',' ')}</span>` : ''}
+                        </div></div></div></a>`;
+        return slide;
+    }
+
+    function updateHeroBannerDots() {
+        if (!heroBannerCarouselElement) return;
+        let dotsContainer = heroBannerCarouselElement.querySelector('.hero-banner-dots');
+        let controlsWrapper = heroBannerCarouselElement.querySelector('.hero-banner-controls-wrapper');
+        if (!controlsWrapper && heroSlidesData.length > 0) { // Create wrapper if not present
+            controlsWrapper = document.createElement('div');
+            controlsWrapper.className = 'hero-banner-controls-wrapper';
+            heroBannerCarouselElement.appendChild(controlsWrapper);
+        }
+        if (controlsWrapper && !dotsContainer && heroSlidesData.length > 1) { 
+             dotsContainer = document.createElement('div');
+             dotsContainer.className = 'hero-banner-dots';
+             controlsWrapper.appendChild(dotsContainer); 
+        }
+        if (!dotsContainer || heroSlidesData.length <=1 ) { if(dotsContainer) dotsContainer.innerHTML = ''; return; }
+        dotsContainer.innerHTML = '';
+        heroSlidesData.forEach((_, index) => {
+            const dot = document.createElement('button'); dot.classList.add('hero-banner-dot');
+            if (index === currentHeroSlideIndex) dot.classList.add('active');
+            dot.setAttribute('aria-label', `Go to slide ${index + 1}`);
+            dot.addEventListener('click', () => { currentHeroSlideIndex = index; showHeroSlide(currentHeroSlideIndex); resetHeroInterval(); });
+            dotsContainer.appendChild(dot);
+        });
+    }
+
+    function showHeroSlide(index) {
+        if (!heroBannerCarouselElement) return;
+        const slides = heroBannerCarouselElement.querySelectorAll('.hero-banner-slide');
+        if (slides.length === 0 || index < 0 || index >= slides.length) return; // Boundary checks
+        slides.forEach((slide, i) => {
+            slide.classList.remove('active'); slide.style.zIndex = (i === index) ? 2 : 1; 
+            if (i === index) slide.classList.add('active');
+        });
+        currentHeroSlideIndex = index;
+        updateHeroBannerDots();
+    }
+
+    function nextHeroSlide() { if (heroSlidesData.length === 0) return; currentHeroSlideIndex = (currentHeroSlideIndex + 1) % heroSlidesData.length; showHeroSlide(currentHeroSlideIndex); }
+    function prevHeroSlide() { /* Not used by default hero controls, but kept for completeness */ if (heroSlidesData.length === 0) return; currentHeroSlideIndex = (currentHeroSlideIndex - 1 + heroSlidesData.length) % heroSlidesData.length; showHeroSlide(currentHeroSlideIndex); }
+    function resetHeroInterval() { clearInterval(heroInterval); if (heroSlidesData.length > 1) { heroInterval = setInterval(nextHeroSlide, 7000); } }
+
+    async function initHeroBannerCarousel() {
+        if (!heroBannerCarouselElement) { console.error("Hero banner element not found!"); return; }
+        const loadingMsgElement = heroBannerCarouselElement.querySelector('.carousel-loading-message');
+        if (!loadingMsgElement) {
+            const tempLoadingMsg = document.createElement('p'); tempLoadingMsg.className = 'carousel-loading-message';
+            tempLoadingMsg.textContent = 'Loading Highlights...'; heroBannerCarouselElement.innerHTML= ''; heroBannerCarouselElement.appendChild(tempLoadingMsg);
+        } else { loadingMsgElement.style.display = 'block'; }
+        
+        console.log("Hero Banner: Attempting to fetch /api/home/top_airing");
+        try {
+            const response = await fetch('/api/home/top_airing');
+            console.log("Hero Banner: Response status:", response.status, ", OK:", response.ok);
+            if (!response.ok) {
+                let errorText = `HTTP error! Status: ${response.status}`;
+                try { const errorJson = await response.json(); errorText += ` - ${errorJson.error || JSON.stringify(errorJson)}`; } 
+                catch (e) { try { const textError = await response.text(); errorText += ` - ${textError.substring(0,150)}`; } catch (e2) { /* ignore */}}
+                throw new Error(errorText);
+            }
+            const animeList = await response.json();
+            if (animeList.error) { console.error("Hero Banner: API error:", animeList.error); heroBannerCarouselElement.innerHTML = `<p class="carousel-empty-message">${animeList.error}</p>`; return; }
+            if (!animeList || !Array.isArray(animeList) || animeList.length === 0) { console.warn("Hero Banner: No data or empty array.", animeList); heroBannerCarouselElement.innerHTML = '<p class="carousel-empty-message">No current highlights.</p>'; return; }
+            
+            heroSlidesData = animeList.slice(0, 5); 
+            const loadingMsgToRemove = heroBannerCarouselElement.querySelector('.carousel-loading-message');
+            if (loadingMsgToRemove) loadingMsgToRemove.remove();
+            heroBannerCarouselElement.querySelectorAll('.hero-banner-slide, .hero-banner-controls-wrapper').forEach(el => el.remove());
+
+            heroSlidesData.forEach(anime => { heroBannerCarouselElement.appendChild(createHeroSlide(anime)); });
+            
+            if (heroSlidesData.length > 0) {
+                // updateHeroBannerDots will create the controls wrapper and dots
+                updateHeroBannerDots(); 
+                showHeroSlide(0); 
+                resetHeroInterval();
+                // Note: Prev/Next buttons are not part of hero banner by default here.
+                // If they were added to HTML, their listeners would be in setupCarouselButtons.
+            } else { if (!heroBannerCarouselElement.querySelector('.carousel-empty-message')) heroBannerCarouselElement.innerHTML = '<p class="carousel-empty-message">No highlights found.</p>';}
+        } catch (error) {
+            console.error("Catastrophic error in initHeroBannerCarousel:", error);
+            if (heroBannerCarouselElement) heroBannerCarouselElement.innerHTML = `<p class="carousel-empty-message">Error loading highlights. Check console.</p>`;
+        }
+    }
+    
+    function displayAnimeCards(animeList, containerElement, cardClass = 'anime-card-carousel') {
+        if (!containerElement) { console.error("Container for cards not found:", cardClass, containerElement?.id); return; }
+        containerElement.innerHTML = ''; 
+        if (!animeList || !Array.isArray(animeList) || animeList.length === 0) { containerElement.innerHTML = '<p class="carousel-empty-message">No anime.</p>'; return; }
+        animeList.forEach(anime => {
+            const animeCard = document.createElement('div'); animeCard.classList.add(cardClass); 
+            let title = anime.title?.userPreferred || anime.title?.romaji || anime.title?.english || 'Unknown Title';
+            if (cardClass === 'anime-card-carousel' && title.length > 35) title = title.substring(0, 32) + "...";
+            let episodeInfo = '';
+            if (containerElement.id === 'nextEpisodeCarousel' && anime.nextEpisodeNumber) { episodeInfo = `<p class="card-episodes">Next Ep: ${anime.nextEpisodeNumber}</p>`; }
+            else if (anime.episodes) { episodeInfo = `<p class="card-episodes">Total Ep: ${anime.episodes}</p>`; }
+            let airingTimeInfo = '';
+            if (containerElement.id === 'nextEpisodeCarousel' && anime.timeUntilAiring !== null && typeof anime.timeUntilAiring !== 'undefined') {
+                airingTimeInfo = `<p class="card-airing-time">${formatTimeUntilAiring(anime.timeUntilAiring)}</p>`;
+            } else if (containerElement.id === 'nextEpisodeCarousel' && anime.nextAiringAt) {
+                const airingDate = new Date(anime.nextAiringAt * 1000); airingTimeInfo = `<p class="card-airing-time">Airs: ${airingDate.toLocaleDateString()}</p>`;
+            }
+            animeCard.innerHTML = `
+                <a href="${anime.id ? `{{ url_for('anime_details_page', anime_id=0) }}`.slice(0,-1) + anime.id : '#'}">
+                    <img src="${anime.coverImage?.large || anime.coverImage?.medium || '{{ url_for('static', filename='placeholder.png') }}'}" alt="${title.replace(/"/g, '"')}" loading="lazy" onerror="this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                    <h3>${title}</h3> ${episodeInfo}
+                    ${anime.averageScore ? `<p class="card-score">Score: ${anime.averageScore / 10}</p>` : ''}
+                    ${airingTimeInfo} </a>`;
+            containerElement.appendChild(animeCard);
+        });
+    }
+    function displaySearchGridAnime(animeList, container) { displayAnimeCards(animeList, container, 'anime-card-search'); }
+
+    async function fetchAndDisplayCarousel(containerElement) {
+        if (!containerElement || containerElement.dataset.loaded === 'true') { return Promise.resolve(); } // Return a resolved promise
+        const apiUrl = containerElement.dataset.apiUrl; const sectionTitle = containerElement.dataset.sectionTitle || "Anime";
+        if (!apiUrl) { /* ... (error handling) ... */ return Promise.reject("No API URL"); }
+        if (!containerElement.querySelector('.anime-card-carousel') && !containerElement.querySelector('.carousel-empty-message')) {
+             containerElement.innerHTML = '<p class="carousel-loading-message">Loading...</p>';
+        }
+        console.log(`Attempting to fetch regular carousel: ${sectionTitle} from ${apiUrl}`);
+        try {
+            const response = await fetch(apiUrl);
+            if (!response.ok) { /* ... (detailed error logging from before) ... */ throw new Error(`HTTP error for ${sectionTitle}`); }
+            const animeList = await response.json();
+            if (animeList.error) { containerElement.innerHTML = `<p class="carousel-empty-message">${animeList.error}</p>`; }
+            else if (animeList && Array.isArray(animeList) && animeList.length > 0) { displayAnimeCards(animeList, containerElement); }
+            else { containerElement.innerHTML = `<p class="carousel-empty-message">No anime found for ${sectionTitle}.</p>`; }
+        } catch (error) { console.error(`Failed to fetch ${sectionTitle}:`, error); containerElement.innerHTML = `<p class="carousel-empty-message">Error loading section: ${sectionTitle}.</p>`;}
+        finally { containerElement.dataset.loaded = 'true';  }
+    }
+
+    function setupCarouselButtons() {
+        document.querySelectorAll('.anime-carousel-wrapper .carousel-btn.prev').forEach(button => {
+            button.addEventListener('click', () => {
+                const targetId = button.dataset.target; const carousel = document.getElementById(targetId);
+                if (carousel) { const card = carousel.querySelector('.anime-card-carousel'); const scrollAmount = card ? (card.offsetWidth + 15) * 3 : 500; carousel.scrollBy({ left: -scrollAmount, behavior: 'smooth' }); }
+            });
+        });
+        document.querySelectorAll('.anime-carousel-wrapper .carousel-btn.next').forEach(button => {
+            button.addEventListener('click', () => {
+                const targetId = button.dataset.target; const carousel = document.getElementById(targetId);
+                if (carousel) { const card = carousel.querySelector('.anime-card-carousel'); const scrollAmount = card ? (card.offsetWidth + 15) * 3 : 500; carousel.scrollBy({ left: scrollAmount, behavior: 'smooth' }); }
+            });
+        });
+    }
+    
+    if (baseSearchForm) { /* ... (same form submit logic for /search route) ... */ }
+    if(backToHomeButton) { /* ... (same back to home logic) ... */ }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log("DOM Content Loaded. Initializing carousels.");
+        await initHeroBannerCarousel(); // Wait for hero banner to attempt loading
+        console.log("Hero banner initialization attempt complete.");
+
+        const lazyLoadCarousels = Array.from(document.querySelectorAll('.lazy-load-carousel'));
+        console.log("Found lazy load carousels:", lazyLoadCarousels.map(c => c.id));
+        const SUBSEQUENT_LOAD_DELAY = 600; 
+        let carouselLoadQueue = [];
+        let isProcessingQueue = false;
+
+        async function processCarouselQueue() {
+            if (carouselLoadQueue.length === 0) { isProcessingQueue = false; return; }
+            isProcessingQueue = true; 
+            const carouselToLoad = carouselLoadQueue.shift();
+            // console.log("Processing from queue:", carouselToLoad ? carouselToLoad.id : "Undefined item");
+            if (carouselToLoad) {
+                if (carouselToLoad.dataset.loaded !== 'true') {
+                    await fetchAndDisplayCarousel(carouselToLoad)
+                        .catch(err => console.error(`Error processing ${carouselToLoad.id} from queue:`, err));
+                }
+            }
+            if (carouselLoadQueue.length > 0) { setTimeout(() => { isProcessingQueue = false; processCarouselQueue(); }, SUBSEQUENT_LOAD_DELAY); } 
+            else { isProcessingQueue = false; }
+        }
+        
+        if (lazyLoadCarousels.length > 0) {
+            const firstRegularCarousel = lazyLoadCarousels.shift(); 
+            if (firstRegularCarousel && firstRegularCarousel.dataset.loaded !== 'true') {
+                // console.log("Eagerly loading first regular carousel:", firstRegularCarousel.id);
+                setTimeout(() => { 
+                    fetchAndDisplayCarousel(firstRegularCarousel)
+                        .catch(err => console.error(`Error eager loading ${firstRegularCarousel.id}:`, err));
+                }, 300); 
+            }
+        }
+
+        if ('IntersectionObserver' in window && lazyLoadCarousels.length > 0) {
+            // console.log("Setting up IntersectionObserver for:", lazyLoadCarousels.map(c=>c.id));
+            const observerOptions = { root: null, rootMargin: '0px 0px 400px 0px', threshold: 0.01 };
+            const carouselObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const carouselDiv = entry.target;
+                        if (carouselDiv.dataset.loaded !== 'true' && !carouselLoadQueue.find(item => item.id === carouselDiv.id)) {
+                            carouselLoadQueue.push(carouselDiv);
+                            if (!isProcessingQueue) { processCarouselQueue(); }
+                        }
+                        observer.unobserve(carouselDiv);
+                    }
+                });
+            }, observerOptions);
+            lazyLoadCarousels.forEach(carousel => { carouselObserver.observe(carousel); });
+        } else if (lazyLoadCarousels.length > 0) { 
+            lazyLoadCarousels.forEach((carouselDiv, index) => {
+                setTimeout(() => {
+                    if (carouselDiv.dataset.loaded !== 'true') {
+                        fetchAndDisplayCarousel(carouselDiv)
+                            .catch(err => console.error(`Error fallback loading ${carouselDiv.id}:`, err));
+                    }
+                }, (SUBSEQUENT_LOAD_DELAY * (index + 1)) + 1000); 
+            });
+        }
+        setupCarouselButtons(); 
+    });
+</script>
+{% endblock %}

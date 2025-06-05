@@ -1,0 +1,170 @@
+{% extends "base_layout.html" %}
+
+{% block title %}{{ category_name or "Browse Anime" }} - Page {{ page_info.currentPage or 1 }} - BingeWatch{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Styles specific to category_page, can be moved to style.css if preferred */
+    .category-page-container { /* This class is on the main div in content block */
+        /* max-width: 1400px; /* This can be inherited from .container in base_layout if not overriding */
+        /* margin: 20px auto; */ /* Handled by .container if used */
+    }
+    .pagination { 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        margin-top: 30px; 
+        margin-bottom: 20px; 
+        gap: 5px; /* Space between pagination items */
+        flex-wrap: wrap; /* Allow pagination items to wrap on smaller screens */
+    }
+    .pagination a, .pagination span {
+        padding: 8px 12px; 
+        border: 1px solid #444; 
+        background-color: #2c2c2c;
+        color: #ccc; 
+        text-decoration: none; 
+        border-radius: 4px; 
+        transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+        margin: 2px; /* Small margin around each item */
+    }
+    .pagination a:hover { 
+        background-color: #e50914; 
+        color: white; 
+        border-color: #e50914;
+    }
+    .pagination .current-page { 
+        background-color: #e50914; 
+        color: white; 
+        font-weight: bold; 
+        border-color: #e50914;
+    }
+    .pagination .disabled { 
+        color: #666; 
+        background-color: #222; 
+        cursor: not-allowed; 
+        border-color: #333;
+    }
+    
+    .category-header { 
+        margin-bottom: 30px; 
+        text-align: center; 
+        padding-top: 10px; /* Add some space if header is directly above */
+    }
+    .category-header h1 { 
+        color: #e50914; 
+        font-size: 2.2em; 
+        margin-bottom: 10px;
+    }
+    .category-header .back-to-home-link-cat { /* Specific class for this link */
+        font-size: 0.9em; 
+        color: #aaa; 
+        margin-top: 5px; 
+        display:inline-block; 
+    }
+    .category-header .back-to-home-link-cat:hover { color: #ccc; }
+
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); /* Consistent with search grid */
+        gap: 25px;
+        /* padding: 0 15px; /* Padding is handled by .container */
+    }
+    /* Uses .anime-card-search styles for cards, assumed to be in main style.css */
+
+    .error-message-category, .no-results-category {
+        text-align: center;
+        color: #aaa;
+        font-size: 1.1em;
+        padding: 40px 20px;
+        background-color: #1c1c1c;
+        border-radius: 6px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container category-page-container"> {# Ensure .container class for consistent width/padding #}
+    <header class="category-header">
+        <h1>{{ category_name | e }}</h1>
+        <a href="{{ url_for('index') }}" class="back-to-home-link-cat">« Back to Homepage</a>
+    </header>
+
+    {% if error_message %}
+        <p class="error-message-category">{{ error_message }}</p>
+    {% elif anime_list and anime_list|length > 0 %}
+        <div class="category-grid">
+            {% for anime in anime_list %}
+            <div class="anime-card-search"> {# Using same card style as search results #}
+                <a href="{{ url_for('anime_details_page', anime_id=anime.id) }}">
+                    <img src="{{ anime.coverImage.large or anime.coverImage.medium or url_for('static', filename='placeholder.png') }}" 
+                         alt="{{ (anime.title.romaji or anime.title.english) | e }}" loading="lazy"
+                         onerror="this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                    <h3>{{ ((anime.title.romaji or anime.title.english) | truncate(45)) if (anime.title.romaji or anime.title.english) else 'Unknown Title' }}</h3>
+                    {% if anime.episodes is not none %}<p class="card-episodes">Ep: {{ anime.episodes }}</p>{% endif %}
+                    {% if anime.averageScore %}<p class="card-score">Score: {{ (anime.averageScore / 10) | round(1) }}</p>{% endif %}
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if page_info and (page_info.lastPage > 1 or page_info.hasNextPage or page_info.currentPage > 1) %}
+        <nav class="pagination" aria-label="Pagination">
+            {# Previous Page Link #}
+            {% if page_info.currentPage > 1 %}
+                <a href="{{ url_for('category_page', category_key=category_key, page=page_info.currentPage - 1, q=(search_query if search_query else none), name=(genre_name_param if genre_name_param else none)) }}">« Prev</a>
+            {% else %}
+                <span class="disabled">« Prev</span>
+            {% endif %}
+
+            {# Page Numbers Logic #}
+            {% set P_RANGE = 2 %} {# Number of pages to show before and after current page #}
+            {% if page_info.lastPage and page_info.lastPage > 1 %}
+                {# First page and ellipsis ... #}
+                {% if page_info.currentPage > P_RANGE + 1 %}
+                    <a href="{{ url_for('category_page', category_key=category_key, page=1, q=(search_query if search_query else none), name=(genre_name_param if genre_name_param else none)) }}">1</a>
+                    {% if page_info.currentPage > P_RANGE + 2 %}
+                        <span class="disabled">...</span>
+                    {% endif %}
+                {% endif %}
+
+                {# Actual page numbers #}
+                {% for p_num in range([1, page_info.currentPage - P_RANGE] | max, [page_info.lastPage, page_info.currentPage + P_RANGE] | min + 1) %}
+                    {% if p_num == page_info.currentPage %}
+                        <span class="current-page">{{ p_num }}</span>
+                    {% else %}
+                        <a href="{{ url_for('category_page', category_key=category_key, page=p_num, q=(search_query if search_query else none), name=(genre_name_param if genre_name_param else none)) }}">{{ p_num }}</a>
+                    {% endif %}
+                {% endfor %}
+
+                {# Last page and ellipsis ... #}
+                 {% if page_info.currentPage < page_info.lastPage - P_RANGE %}
+                    {% if page_info.currentPage < page_info.lastPage - P_RANGE - 1 %}
+                        <span class="disabled">...</span>
+                    {% endif %}
+                    <a href="{{ url_for('category_page', category_key=category_key, page=page_info.lastPage, q=(search_query if search_query else none), name=(genre_name_param if genre_name_param else none)) }}">{{ page_info.lastPage }}</a>
+                {% endif %}
+            {% elif page_info.total and page_info.total > 0 %} {# Only one page of results #}
+                 <span class="current-page">1</span>
+            {% endif %}
+            {# End Page numbers logic #}
+
+            {# Next Page Link #}
+            {% if page_info.hasNextPage %}
+                <a href="{{ url_for('category_page', category_key=category_key, page=page_info.currentPage + 1, q=(search_query if search_query else none), name=(genre_name_param if genre_name_param else none)) }}">Next »</a>
+            {% else %}
+                <span class="disabled">Next »</span>
+            {% endif %}
+        </nav>
+        {% if page_info.total is not none %}
+        <p style="text-align: center; margin-top: 10px; font-size: 0.9em; color: #888;">
+            Total Results: {{ page_info.total }}
+        </p>
+        {% endif %}
+        {% endif %}
+
+    {% else %}
+        <p class="no-results-category">No anime found in this category. Try exploring other sections!</p>
+    {% endif %}
+</div>
+{% endblock %}

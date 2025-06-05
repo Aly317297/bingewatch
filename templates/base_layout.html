@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}BingeWatch{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    <header class="site-header">
+        <div class="header-content container">
+            <div class="header-left-group">
+                <div class="logo-hamburger-container">
+                    <button class="hamburger-menu" id="hamburgerMenuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="sideNavigationBar">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <h1><a href="{{ url_for('index') }}" class="site-title-link">BingeWatch</a></h1>
+                </div>
+                
+                <div class="search-container-header" id="baseLayoutSearchContainer"> 
+                    <form action="{{ url_for('search_results_page') }}" method="get" id="baseSearchForm" role="search">
+                        {# The input and button are now direct children of the form #}
+                        <input type="text" name="q" id="searchAnimeInput" placeholder="Search anime..." value="{{ request.args.get('q', '') }}" aria-label="Search Anime" autocomplete="off">
+                        <button type="submit" aria-label="Search">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18px" height="18px"><path d="M0 0h24v24H0z" fill="none"/><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                        </button>
+                        {# The suggestions dropdown is still here for positioning, but outside the direct input/button flow #}
+                        <div id="searchSuggestionsDropdown" class="suggestions-dropdown"></div>
+                    </form>
+                </div>
+            </div> 
+            
+            <div class="header-auth-links">
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('account_page') }}" class="auth-link">Account</a>
+                    <a href="{{ url_for('logout_page') }}" class="auth-link">Logout</a>
+                {% else %}
+                    <a href="{{ url_for('login_page') }}" class="auth-link">Login</a>
+                    <a href="{{ url_for('register_page') }}" class="auth-link auth-link-signup">Sign Up</a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    {# ... rest of base_layout.html (sidebar, main, footer, scripts) remains the same as before ... #}
+    <nav id="sideNavigationBar" class="sidebar" aria-hidden="true">
+        <button class="close-sidebar-btn" id="closeSidebarBtn" aria-label="Close menu">×</button>
+        <ul>
+            <li><a href="{{ url_for('index') }}">Home</a></li>
+            <li><a href="{{ url_for('genres_page') }}">Browse by Genre</a></li>
+            <li><a href="{{ url_for('category_page', category_key='top_airing') }}">Top Airing</a></li>
+            <li><a href="{{ url_for('category_page', category_key='popular_this_season') }}">Popular Now</a></li>
+            <li><a href="{{ url_for('category_page', category_key='top_all_time') }}">All Time Favorites</a></li>
+            <li><a href="{{ url_for('category_page', category_key='highly_rated_last_year') }}">Highly Rated (Last Year)</a></li>
+            <hr style="border-color: #2a2a2a; margin: 10px 20px;">
+            {% if current_user.is_authenticated %}
+                <li><a href="{{ url_for('account_page') }}">My Account ({{ current_user.username }})</a></li>
+                <li><a href="{{ url_for('logout_page') }}">Logout</a></li>
+            {% else %}
+                <li><a href="{{ url_for('login_page') }}">Login</a></li>
+                <li><a href="{{ url_for('register_page') }}">Sign Up</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    <div class="overlay" id="sidebarOverlay" aria-hidden="true"></div>
+
+    <main id="mainContentArea">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="container flash-messages-container" style="padding-top: 10px;">
+                    <ul class="flash-messages">
+                    {% for category, message in messages %}
+                        <li class="{{ category }}">{{ message }}</li>
+                    {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>© {{ now.year if now else datetime.date.today().year }} BingeWatch. For educational purposes.</p>
+    </footer>
+
+    {% block scripts_extra %}{% endblock %}
+    <script>
+        // Sidebar Toggle Logic
+        const hamburgerMenuBtn = document.getElementById('hamburgerMenuBtn');
+        const sideNavigationBar = document.getElementById('sideNavigationBar');
+        const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+        const mainContent = document.getElementById('mainContentArea'); 
+        let firstFocusableElementSidebar, lastFocusableElementSidebar;
+
+        function updateFocusableElementsSidebar() {
+            if (!sideNavigationBar) return;
+            const focusableElementsString = 'a[href]:not([disabled]), button:not([disabled]), textarea:not([disabled]), input[type="text"]:not([disabled]), input[type="radio"]:not([disabled]), input[type="checkbox"]:not([disabled]), select:not([disabled])';
+            const focusableElements = Array.from(sideNavigationBar.querySelectorAll(focusableElementsString));
+            const visibleFocusableElements = focusableElements.filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+            if (visibleFocusableElements.length > 0) {
+                firstFocusableElementSidebar = visibleFocusableElements[0];
+                lastFocusableElementSidebar = visibleFocusableElements[visibleFocusableElements.length - 1];
+            } else { 
+                firstFocusableElementSidebar = closeSidebarBtn; 
+                lastFocusableElementSidebar = closeSidebarBtn;
+            }
+        }
+        
+        function openSidebar() {
+            if (!sideNavigationBar || !hamburgerMenuBtn || !sidebarOverlay) return;
+            sideNavigationBar.classList.add('open'); 
+            sideNavigationBar.setAttribute('aria-hidden', 'false');
+            hamburgerMenuBtn.setAttribute('aria-expanded', 'true'); 
+            sidebarOverlay.classList.add('active'); 
+            document.body.style.overflow = 'hidden'; 
+            updateFocusableElementsSidebar();
+            setTimeout(() => { firstFocusableElementSidebar?.focus(); }, 50);
+            document.addEventListener('keydown', trapFocusInSidebar);
+        }
+
+        function closeSidebar() {
+            if (!sideNavigationBar || !hamburgerMenuBtn || !sidebarOverlay) return;
+            sideNavigationBar.classList.remove('open'); 
+            sideNavigationBar.setAttribute('aria-hidden', 'true');
+            hamburgerMenuBtn.setAttribute('aria-expanded', 'false'); 
+            sidebarOverlay.classList.remove('active');
+            document.body.style.overflow = ''; 
+            hamburgerMenuBtn.focus();
+            document.removeEventListener('keydown', trapFocusInSidebar);
+        }
+        
+        function trapFocusInSidebar(e) {
+            if (!sideNavigationBar || !sideNavigationBar.classList.contains('open')) return;
+            if (e.key === 'Tab' || e.keyCode === 9) {
+                if (e.shiftKey) { 
+                    if (document.activeElement === firstFocusableElementSidebar) {
+                        lastFocusableElementSidebar.focus(); e.preventDefault();
+                    }
+                } else { 
+                    if (document.activeElement === lastFocusableElementSidebar) {
+                        firstFocusableElementSidebar.focus(); e.preventDefault();
+                    }
+                }
+            }
+        }
+
+        if (hamburgerMenuBtn) hamburgerMenuBtn.addEventListener('click', openSidebar);
+        if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebar);
+        if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
+        
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && sideNavigationBar && sideNavigationBar.classList.contains('open')) {
+                closeSidebar();
+            }
+        });
+
+        // --- Autocomplete Search Logic ---
+        const searchAnimeInput = document.getElementById('searchAnimeInput');
+        const searchSuggestionsDropdown = document.getElementById('searchSuggestionsDropdown');
+        let debounceTimeout;
+        let currentFocusedSuggestion = -1;
+
+        function debounce(func, delay) {
+            return function(...args) {
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+
+        async function fetchSuggestions(query) {
+            if (query.length < 2) { 
+                displaySuggestions([]);
+                return;
+            }
+            try {
+                const response = await fetch(`/api/search_suggestions?q=${encodeURIComponent(query)}`);
+                if (!response.ok) {
+                    console.error('Failed to fetch search suggestions:', response.status, await response.text());
+                    displaySuggestions([]);
+                    return;
+                }
+                const suggestions = await response.json();
+                displaySuggestions(suggestions);
+            } catch (error) {
+                console.error('Error fetching search suggestions:', error);
+                displaySuggestions([]);
+            }
+        }
+
+        function displaySuggestions(animeList) {
+            searchSuggestionsDropdown.innerHTML = '';
+            searchSuggestionsDropdown.style.display = 'none';
+            currentFocusedSuggestion = -1; 
+
+            if (!animeList || animeList.length === 0) {
+                return;
+            }
+
+            const ul = document.createElement('ul');
+            animeList.forEach((anime, index) => {
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.href = `/anime/${anime.id}`;
+                a.setAttribute('data-suggestion-index', index);
+
+                const img = document.createElement('img');
+                img.src = anime.coverImage || '{{ url_for('static', filename='placeholder.png') }}';
+                img.alt = anime.title;
+                img.classList.add('suggestion-cover');
+                img.onerror = function() { this.src='{{ url_for('static', filename='placeholder.png') }}'; };
+
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = anime.title;
+                titleSpan.classList.add('suggestion-title');
+
+                a.appendChild(img);
+                a.appendChild(titleSpan);
+                li.appendChild(a);
+                ul.appendChild(li);
+            });
+            searchSuggestionsDropdown.appendChild(ul);
+            searchSuggestionsDropdown.style.display = 'block';
+        }
+
+        const debouncedFetchSuggestions = debounce(fetchSuggestions, 300);
+
+        if (searchAnimeInput) {
+            searchAnimeInput.addEventListener('input', (e) => {
+                debouncedFetchSuggestions(e.target.value);
+            });
+
+            searchAnimeInput.addEventListener('keydown', (e) => {
+                const suggestions = Array.from(searchSuggestionsDropdown.querySelectorAll('li a'));
+                if (suggestions.length === 0) return;
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    currentFocusedSuggestion = (currentFocusedSuggestion + 1) % suggestions.length;
+                    suggestions[currentFocusedSuggestion].focus();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    currentFocusedSuggestion = (currentFocusedSuggestion - 1 + suggestions.length) % suggestions.length;
+                    suggestions[currentFocusedSuggestion].focus();
+                } else if (e.key === 'Enter') {
+                    if (currentFocusedSuggestion > -1) {
+                        e.preventDefault(); 
+                        suggestions[currentFocusedSuggestion].click(); 
+                    }
+                } else if (e.key === 'Escape') {
+                    searchSuggestionsDropdown.style.display = 'none';
+                    searchAnimeInput.focus();
+                }
+            });
+            
+            searchAnimeInput.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (!searchSuggestionsDropdown.contains(document.activeElement)) {
+                        searchSuggestionsDropdown.style.display = 'none';
+                    }
+                }, 100);
+            });
+        }
+    </script>
+</body>
+</html>

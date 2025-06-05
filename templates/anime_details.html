@@ -1,0 +1,460 @@
+{% extends "base_layout.html" %}
+
+{% block title %}{{ anime.title.romaji or anime.title.english }} - BingeWatch{% endblock %}
+
+{% block head_extra %}
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        .hero-section { /* For this specific details page hero */
+            background-image: linear-gradient(to bottom, rgba(20, 20, 20, 0.2) 0%, rgba(20, 20, 20, 0.6) 70%, #141414 100%),
+                              url("{{ anime.bannerImage or url_for('static', filename='banner_placeholder.jpg') }}");
+        }
+        #captionSettingsPopup { display: none; } /* Default state for caption popup */
+        /* Any other critical page-specific styles from style.css can be reiterated here if needed,
+           but ideally, they are all in the main style.css file. */
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="details-page-wrapper">
+    {# Header is inherited from base_layout.html, no separate details-header-minimal needed if base_layout is used consistently #}
+
+    <section class="hero-section"> {# Styled by general .hero-section and specific inline BG #}
+        <div class="hero-content-wrapper container">
+            <div class="hero-main-content">
+                <img src="{{ anime.coverImage.extraLarge or anime.coverImage.large or url_for('static', filename='placeholder.png') }}"
+                     alt="Cover for {{ (anime.title.romaji or anime.title.english) | e }}"
+                     class="hero-cover-image"
+                     onerror="this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                <div class="hero-info">
+                    <h1 class="hero-title">{{ anime.title.romaji or anime.title.english }}</h1>
+                    {% if anime.title.native %}<p class="hero-native-title"><em>{{ anime.title.native }}</em></p>{% endif %}
+                    
+                    <div class="hero-meta">
+                        {% if anime.averageScore %}<span class="meta-score">Score: {{ (anime.averageScore / 10) | round(1) }}/10</span>{% endif %}
+                        {% if anime.startDate.year %}<span class="meta-year">{{ anime.startDate.year }}</span>{% endif %}
+                        {% if anime.format %}<span class="meta-format">{{ anime.format.replace('_', ' ') | title }}</span>{% endif %}
+                        {% if anime.status %}<span class="meta-status">{{ anime.status.replace('_', ' ') | title }}</span>{% endif %}
+                    </div>
+
+                    {% if anime.genres %}
+                    <div class="hero-genres">
+                        {% for genre in anime.genres[:4] %} {# Show first few genres for brevity #}
+                            <span class="genre-tag-hero">{{ genre }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="hero-actions">
+                        <div class="audio-type-selector-hero">
+                            <button class="audio-type-btn active" data-audio-type="false" aria-pressed="true">Subbed</button>
+                            <button class="audio-type-btn" data-audio-type="true" aria-pressed="false">Dubbed</button>
+                        </div>
+                        <button id="showEpisodesBtn" class="watch-button hero-main-cta" 
+                                data-anilist-id="{{ anime.id }}" 
+                                data-anime-title-romaji="{{ anime.title.romaji or '' | e }}"
+                                data-anime-title-english="{{ anime.title.english or '' | e }}"
+                                data-anime-cover-image="{{ anime.coverImage.medium or anime.coverImage.large or '' | e }}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20px" height="20px" style="margin-right: 8px; vertical-align: middle;"><path d="M0 0h24v24H0z" fill="none"/><path d="M8 5v14l11-7z"/></svg>
+                            Episodes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="interactive-content-area" class="container" style="display: none; padding-top:30px; padding-bottom: 30px;">
+        <div id="videoPlayerWrapper" style="display:none; margin-bottom: 20px;">
+            <div id="videoPlayerContainer"> {# Actual video player will go here #}
+                <video id="animeVideoPlayer" width="100%" controls poster="{{ anime.bannerImage or anime.coverImage.extraLarge or '' }}"></video>
+            </div>
+            <div id="videoError" class="video-error-message"></div>
+            <div class="player-controls-extra">
+                <div id="qualitySelectorContainer"></div>
+                <button id="captionSettingsBtn" style="display:none;">Caption Settings</button>
+            </div>
+        </div>
+
+        <div id="episodeListSection">
+            <h2 id="episodeListHeader">Episodes</h2>
+            <div id="episodeListContainer" class="episode-list-container-redesigned">
+                <!-- Episode items will be populated by JS -->
+            </div>
+        </div>
+    </section>
+    
+    <section id="details-synopsis-section" class="container" style="padding-bottom: 40px;">
+         {% if anime.description %}
+            <div class="description-full">
+                <h2>Synopsis</h2>
+                <div>{{ anime.description | safe }}</div>
+            </div>
+        {% endif %}
+        <div class="more-details">
+            <h2>More Details</h2>
+            <p><strong>Status:</strong> {{ anime.status.replace('_', ' ') | title if anime.status else 'N/A' }}</p>
+            <p><strong>Total Episodes:</strong>
+                {% if anime.status == 'RELEASING' and anime.nextAiringEpisode and anime.nextAiringEpisode.episode %}
+                    Airing (Ep {{ anime.nextAiringEpisode.episode - 1 }} released {% if anime.episodes %} / {{ anime.episodes }} total{% else %}...{% endif %})
+                {% elif anime.status == 'RELEASING' and not (anime.nextAiringEpisode and anime.nextAiringEpisode.episode) and anime.episodes %}
+                     Airing ({{ anime.episodes }} total planned)
+                {% elif anime.status == 'RELEASING' %} Airing
+                {% elif anime.episodes %} {{ anime.episodes }}
+                {% else %} N/A {% endif %}
+            </p>
+            <p><strong>Duration:</strong> {{ anime.duration or 'N/A' }} min/ep</p>
+            {% if anime.studios and anime.studios.nodes %} <p><strong>Studios:</strong> {{ anime.studios.nodes | map(attribute='name') | join(', ') }}</p> {% endif %}
+            <p><strong>Season:</strong> {{ anime.season | title if anime.season else 'N/A' }} {{ anime.seasonYear or '' }}</p>
+            <p><strong>Format:</strong> {{ anime.format.replace('_', ' ') | title if anime.format else 'N/A' }}</p>
+             {% if anime.genres %} <p><strong>All Genres:</strong> {{ anime.genres | join(', ') }}</p> {% endif %}
+        </div>
+    </section>
+
+    <div id="captionSettingsPopup">
+        <h3>Caption Settings</h3>
+        <label for="captionFontSize">Font Size (px):</label>
+        <input type="number" id="captionFontSize" value="24" min="10" max="60">
+        <label for="captionColor">Text Color:</label>
+        <input type="color" id="captionColor" value="#FFFFFF">
+        <label for="captionBgColor">Background Color:</label>
+        <input type="color" id="captionBgColor" value="#000000">
+        <label for="captionBgOpacity">Background Opacity:</label>
+        <input type="range" id="captionBgOpacity" min="0" max="1" step="0.05" value="0.6">
+        <label for="captionEdgeStyle">Edge Style:</label>
+        <select id="captionEdgeStyle">
+            <option value="none" selected>None</option><option value="outline">Outline</option>
+            <option value="shadow">Drop Shadow</option><option value="raised">Raised</option>
+            <option value="depressed">Depressed</option>
+        </select>
+        <button id="applyCaptionSettings">Apply</button>
+        <button id="closeCaptionSettings">Close</button>
+    </div>
+</div> 
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    const showEpisodesBtn = document.getElementById('showEpisodesBtn');
+    const episodeListContainer = document.getElementById('episodeListContainer');
+    const episodeListHeader = document.getElementById('episodeListHeader');
+    const videoPlayerWrapper = document.getElementById('videoPlayerWrapper');
+    const videoPlayer = document.getElementById('animeVideoPlayer');
+    const videoError = document.getElementById('videoError');
+    const qualitySelectorContainer = document.getElementById('qualitySelectorContainer');
+    const audioTypeButtons = document.querySelectorAll('.audio-type-btn');
+    const interactiveContentArea = document.getElementById('interactive-content-area');
+    
+    const captionSettingsBtn = document.getElementById('captionSettingsBtn');
+    const captionSettingsPopup = document.getElementById('captionSettingsPopup');
+    const captionFontSizeInput = document.getElementById('captionFontSize');
+    const captionColorInput = document.getElementById('captionColor');
+    const captionBgColorInput = document.getElementById('captionBgColor');
+    const captionBgOpacityInput = document.getElementById('captionBgOpacity');
+    const captionEdgeStyleSelect = document.getElementById('captionEdgeStyle');
+    const applyCaptionSettingsBtn = document.getElementById('applyCaptionSettings');
+    const closeCaptionSettingsBtn = document.getElementById('closeCaptionSettings');
+
+    let hls = null;
+    let currentSources = [];
+    let currentStreamDataFromConsumet = null;
+    let currentAudioTypeIsDub = false; 
+    
+    const ANILIST_ID_FOR_TRACKING = showEpisodesBtn.dataset.anilistId;
+    const ANIME_TITLE_ROMAJI_FOR_TRACKING = showEpisodesBtn.dataset.animeTitleRomaji || "";
+    const ANIME_TITLE_ENGLISH_FOR_TRACKING = showEpisodesBtn.dataset.animeTitleEnglish || ANIME_TITLE_ROMAJI_FOR_TRACKING;
+    const ANIME_COVER_IMAGE_FOR_TRACKING = showEpisodesBtn.dataset.animeCoverImage || "{{ anime.coverImage.medium or anime.coverImage.large or url_for('static', filename='placeholder.png') | e }}";
+
+    let currentConsumetEpisodeIdForTracking = null;
+    let currentEpisodeNumberStrForTracking = null;
+    let lastProgressSentTime = 0;
+    const PROGRESS_UPDATE_INTERVAL = 10000; 
+    
+    // Pass current_user.is_authenticated status from Flask to JavaScript
+    const currentUserIsAuthenticated = {{ current_user.is_authenticated | tojson }};
+
+
+    function applyCaptionStyles() {
+        const fontSize = captionFontSizeInput.value + 'px';
+        const color = captionColorInput.value;
+        const bgColor = captionBgColorInput.value;
+        const bgOpacity = captionBgOpacityInput.value;
+        const edgeStyle = captionEdgeStyleSelect.value;
+        let textShadow = 'none';
+        if (edgeStyle === 'outline') textShadow = `black 1px 1px 1px, black -1px -1px 1px, black 1px -1px 1px, black -1px 1px 1px`;
+        else if (edgeStyle === 'shadow') textShadow = '1px 1px 2px rgba(0,0,0,0.9)';
+        else if (edgeStyle === 'raised') textShadow = '1px 1px 0px #000, 2px 2px 0px rgba(0,0,0,0.3)';
+        else if (edgeStyle === 'depressed') textShadow = '-1px -1px 0px #000, 1px 1px 0px rgba(255,255,255,0.1)';
+        const styleId = 'dynamic-caption-styles';
+        let styleElement = document.getElementById(styleId);
+        if (!styleElement) { styleElement = document.createElement('style'); styleElement.id = styleId; document.head.appendChild(styleElement); }
+        let r = parseInt(bgColor.slice(1, 3), 16); let g = parseInt(bgColor.slice(3, 5), 16); let b_val = parseInt(bgColor.slice(5, 7), 16);
+        styleElement.textContent = `video#${videoPlayer.id}::cue { font-size: ${fontSize} !important; color: ${color} !important; background-color: rgba(${r}, ${g}, ${b_val}, ${bgOpacity}) !important; text-shadow: ${textShadow} !important; font-family: Arial, sans-serif !important; }`;
+        if (captionSettingsPopup) captionSettingsPopup.style.display = 'none';
+    }
+
+    if (captionSettingsBtn) captionSettingsBtn.addEventListener('click', () => { if(captionSettingsPopup) captionSettingsPopup.style.display = 'block'; });
+    if (closeCaptionSettingsBtn) closeCaptionSettingsBtn.addEventListener('click', () => { if(captionSettingsPopup) captionSettingsPopup.style.display = 'none'; });
+    if (applyCaptionSettingsBtn) applyCaptionSettingsBtn.addEventListener('click', applyCaptionStyles);
+
+    audioTypeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const wantsDub = (this.dataset.audioType === 'true');
+            if (wantsDub === currentAudioTypeIsDub && interactiveContentArea.style.display !== 'none' && episodeListContainer.innerHTML.includes('h3')) return; 
+            currentAudioTypeIsDub = wantsDub;
+            audioTypeButtons.forEach(btn => { btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false'); });
+            this.classList.add('active'); this.setAttribute('aria-pressed', 'true');
+            if (interactiveContentArea.style.display !== 'none' && ANILIST_ID_FOR_TRACKING) {
+                loadEpisodes(ANILIST_ID_FOR_TRACKING, ANIME_TITLE_ROMAJI_FOR_TRACKING, ANIME_TITLE_ENGLISH_FOR_TRACKING);
+            }
+        });
+    });
+
+    showEpisodesBtn.addEventListener('click', function() {
+        if (interactiveContentArea.style.display === 'none') {
+            interactiveContentArea.style.display = 'block';
+            this.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20px" height="20px" style="margin-right: 8px; vertical-align: middle;"><path d="M0 0h24v24H0z" fill="none"/><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> Hide Episodes`;
+            if (!episodeListContainer.innerHTML.includes('h3')) { 
+                loadEpisodes(ANILIST_ID_FOR_TRACKING, ANIME_TITLE_ROMAJI_FOR_TRACKING, ANIME_TITLE_ENGLISH_FOR_TRACKING);
+            }
+            const rect = interactiveContentArea.getBoundingClientRect();
+            if (rect.top < 60 || rect.bottom > window.innerHeight) { 
+                interactiveContentArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        } else {
+            interactiveContentArea.style.display = 'none';
+            videoPlayerWrapper.style.display = 'none'; 
+            if(hls) hls.destroy(); hls = null; videoPlayer.pause(); videoPlayer.removeAttribute('src');
+            this.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20px" height="20px" style="margin-right: 8px; vertical-align: middle;"><path d="M0 0h24v24H0z" fill="none"/><path d="M8 5v14l11-7z"/></svg> Episodes`;
+        }
+    });
+
+    async function loadEpisodes(anilistId, animeTitleRomaji, animeTitleEnglish) {
+        const displayTitle = animeTitleRomaji || "{{ anime.title.romaji or anime.title.english }}"; // Use escapejs for safety
+        episodeListHeader.textContent = `Loading ${currentAudioTypeIsDub ? 'Dubbed' : 'Subbed'} Episodes...`;
+        episodeListContainer.innerHTML = `<p class="carousel-loading-message">Fetching episode list...</p>`;
+        videoPlayerWrapper.style.display = 'none'; 
+        if(hls) { hls.destroy(); hls = null; }
+        videoPlayer.pause(); videoPlayer.removeAttribute('src'); if(videoPlayer.load) videoPlayer.load();
+        qualitySelectorContainer.innerHTML = ''; videoError.textContent = '';
+        let fetchUrl = `/api/consumet/episodes/${anilistId}?dub=${currentAudioTypeIsDub}`;
+        fetchUrl += `&titleRomaji=${encodeURIComponent(animeTitleRomaji)}`;
+        fetchUrl += `&titleEnglish=${encodeURIComponent(animeTitleEnglish)}`;
+        try {
+            const response = await fetch(fetchUrl);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: "Unknown error."}));
+                throw new Error(errorData.error || `Failed to load episodes. Status: ${response.status}`);
+            }
+            const episodes = await response.json();
+            if (episodes && episodes.length > 0) { displayEpisodeList(episodes, displayTitle); } 
+            else { episodeListHeader.textContent = `${currentAudioTypeIsDub ? 'Dubbed' : 'Subbed'} Episodes`; episodeListContainer.innerHTML = `<p class="carousel-empty-message">No ${currentAudioTypeIsDub ? 'dubbed' : 'subbed'} episodes found.</p>`; }
+        } catch (error) {
+            console.error("Error fetching episodes:", error);
+            episodeListHeader.textContent = `Episodes`;
+            episodeListContainer.innerHTML = `<p class="carousel-empty-message">Could not load ${currentAudioTypeIsDub ? 'dubbed' : 'subbed'} episodes: ${error.message}.</p>`;
+        }
+    }
+
+    function displayEpisodeList(episodes, animeTitle) {
+        episodeListHeader.textContent = `${currentAudioTypeIsDub ? 'Dubbed' : 'Subbed'} Episodes`;
+        episodeListContainer.innerHTML = ''; 
+        const ul = document.createElement('ul'); ul.classList.add('episode-list');
+        episodes.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+        episodes.forEach(ep => {
+            const li = document.createElement('li'); li.classList.add('episode-item');
+            li.style.display = 'flex'; li.style.justifyContent = 'space-between'; li.style.alignItems = 'center';
+            const episodeTitleSpan = document.createElement('span');
+            episodeTitleSpan.textContent = `Episode ${ep.number}${ep.title ? `: ${ep.title}` : ''}`;
+            episodeTitleSpan.style.flexGrow = "1"; 
+            const downloadLink = document.createElement('a');
+            let downloadPageUrl = new URL("{{ url_for('download_options_page_route', _external=True) }}", window.location.origin);
+            downloadPageUrl.searchParams.append('episodeId', ep.id);
+            downloadPageUrl.searchParams.append('epNum', ep.number);
+            downloadPageUrl.searchParams.append('anilistId', ANILIST_ID_FOR_TRACKING);
+            downloadPageUrl.searchParams.append('titleRomaji', ANIME_TITLE_ROMAJI_FOR_TRACKING);
+            downloadPageUrl.searchParams.append('dubAudio', String(currentAudioTypeIsDub));
+            downloadPageUrl.searchParams.append('sourceIsZoroSpecific', ep.sourceIsZoroSpecific ? "true" : "false");
+            downloadLink.href = downloadPageUrl.pathname + downloadPageUrl.search;
+            downloadLink.classList.add('download-episode-btn'); 
+            downloadLink.setAttribute('aria-label', `Download options for episode ${ep.number}`);
+            downloadLink.title = `Download options for episode ${ep.number}`;
+            downloadLink.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18px" height="18px"><path d="M0 0h24v24H0z" fill="none"/><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`;
+            downloadLink.style.marginLeft = "10px"; downloadLink.style.flexShrink = "0";
+            li.appendChild(episodeTitleSpan); li.appendChild(downloadLink);
+            episodeTitleSpan.style.cursor = 'pointer'; 
+            episodeTitleSpan.addEventListener('click', function() {
+                document.querySelectorAll('.episode-item.selected').forEach(el => el.classList.remove('selected'));
+                li.classList.add('selected'); 
+                videoPlayer.poster = "{{ anime.bannerImage or anime.coverImage.extraLarge or ''}}";
+                loadStreamingLinks(ep.id, ep.number, ep.sourceIsZoroSpecific);
+            });
+            ul.appendChild(li);
+        });
+        episodeListContainer.appendChild(ul);
+    }
+
+    async function sendWatchProgress(isFinalUpdate = false) {
+        if (!currentUserIsAuthenticated || !videoPlayer || !currentConsumetEpisodeIdForTracking || !ANILIST_ID_FOR_TRACKING) return;
+        const currentTime = videoPlayer.currentTime; const duration = videoPlayer.duration;
+        if (isNaN(duration) || duration <= 0) return; 
+        const timeSinceLastSend = Date.now() - lastProgressSentTime;
+        const isNearEnd = currentTime >= duration * 0.90; 
+        if (!isFinalUpdate && timeSinceLastSend < PROGRESS_UPDATE_INTERVAL && !isNearEnd && lastProgressSentTime !== 0) return;
+        lastProgressSentTime = Date.now();
+        try {
+            const response = await fetch('/api/update_watch_progress', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    anime_id: ANILIST_ID_FOR_TRACKING, episode_id: currentConsumetEpisodeIdForTracking,
+                    episode_number_str: currentEpisodeNumberStrForTracking, progress_seconds: currentTime,
+                    total_duration_seconds: duration, anime_title_romaji: ANIME_TITLE_ROMAJI_FOR_TRACKING,
+                    anime_cover_image: ANIME_COVER_IMAGE_FOR_TRACKING
+                })});
+            if (response.ok) { const data = await response.json(); console.log("Watch progress update:", data.message); } 
+            else { console.error("Failed to update watch progress:", response.status, await response.text()); }
+        } catch (error) { console.error("Error sending watch progress:", error); }
+    }
+
+    async function loadStreamingLinks(consumetEpisodeId, episodeNumber, isZoroSpecificSource = false) {
+        videoPlayerWrapper.style.display = 'block'; 
+        videoPlayer.pause(); videoPlayer.removeAttribute('src'); videoPlayer.load();
+        videoError.textContent = ''; qualitySelectorContainer.innerHTML = '';
+        captionSettingsBtn.style.display = 'none';
+        episodeListHeader.textContent = `Loading Episode ${episodeNumber}...`; 
+        currentConsumetEpisodeIdForTracking = consumetEpisodeId; currentEpisodeNumberStrForTracking = String(episodeNumber);
+        lastProgressSentTime = 0; 
+        if (hls) { hls.destroy(); hls = null; }
+        let streamLinkUrl = `/api/consumet/stream-link?episode_id=${encodeURIComponent(consumetEpisodeId)}`;
+        streamLinkUrl += `&sourceIsZoroSpecific=${isZoroSpecificSource}`;
+        streamLinkUrl += `&dubAudio=${currentAudioTypeIsDub}`; 
+        try {
+            const response = await fetch(streamLinkUrl);
+            episodeListHeader.textContent = `${currentAudioTypeIsDub ? 'Dubbed' : 'Subbed'} Episodes`; 
+            if (!response.ok) { const errorData = await response.json().catch(() => ({error: "Unknown stream error."})); throw new Error(errorData.error || `Stream links error. Status: ${response.status}`); }
+            currentStreamDataFromConsumet = await response.json();
+            if (currentStreamDataFromConsumet.sources && currentStreamDataFromConsumet.sources.length > 0) {
+                currentSources = currentStreamDataFromConsumet.sources; displayQualitySelector(); 
+                let preferredSource = currentSources.find(s => s.quality === 'default' || s.quality === 'auto' || s.quality === '1080p' || s.quality === '720p');
+                if (!preferredSource) preferredSource = currentSources.find(s => s.url.includes('.m3u8')) || currentSources[0];
+                if (preferredSource) { playVideo(preferredSource.url); captionSettingsBtn.style.display = 'inline-block'; applyCaptionStyles(); } 
+                else { videoError.textContent = 'No playable source found.'; }
+            } else { videoError.textContent = 'No stream sources from Consumet.'; }
+        } catch (error) { 
+            console.error("Error fetching streaming links:", error);
+            episodeListHeader.textContent = `${currentAudioTypeIsDub ? 'Dubbed' : 'Subbed'} Episodes`;
+            videoError.textContent = `Stream links load failed: ${error.message}.`;
+        }
+    }
+
+    function displayQualitySelector() { /* ... (same as before) ... */ }
+    
+    function playVideo(sourceUrlToPlay) {
+        videoError.textContent = '';
+        if (hls) { hls.destroy(); hls = null; }
+        const headers = currentStreamDataFromConsumet ? currentStreamDataFromConsumet.headers : null;
+        const subtitles = currentStreamDataFromConsumet ? currentStreamDataFromConsumet.subtitles : null;
+        let playbackUrl = sourceUrlToPlay;
+        if (sourceUrlToPlay.includes('.m3u8') && headers && headers.Referer) {
+            playbackUrl = `/api/proxy/m3u8?url=${encodeURIComponent(sourceUrlToPlay)}&referer=${encodeURIComponent(headers.Referer)}`;
+        } else if (sourceUrlToPlay.includes('.m3u8')) { console.log("M3U8 direct load."); }
+        
+        const hlsConfig = { /* debug: true */ };
+        if (sourceUrlToPlay.includes('.m3u8')) {
+            if (Hls.isSupported()) {
+                hls = new Hls(hlsConfig); hls.loadSource(playbackUrl); hls.attachMedia(videoPlayer);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => { videoPlayer.play().catch(e => { console.warn("Play interrupted:", e); videoError.textContent = "Playback failed."; }); lastProgressSentTime = 0; });
+                hls.on(Hls.Events.ERROR, (event, data) => { console.error('HLS.js Error:', event, data); videoError.textContent = `HLS Error: ${data.type} - ${data.details}.`; });
+            } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                videoPlayer.src = playbackUrl; videoPlayer.onloadedmetadata = () => { lastProgressSentTime = 0; };
+                videoPlayer.play().catch(e => { console.warn("Play interrupted (native):", e); videoError.textContent = "Playback failed."; });
+            } else { videoError.textContent = 'HLS not supported.'; }
+        } else {
+            videoPlayer.src = sourceUrlToPlay; videoPlayer.onloadedmetadata = () => { lastProgressSentTime = 0; };
+            videoPlayer.play().catch(e => { console.warn("Play interrupted (MP4):", e); videoError.textContent = "Playback failed."; });
+        }
+        videoPlayer.removeEventListener('timeupdate', handleTimeUpdate); videoPlayer.removeEventListener('pause', handlePause);
+        videoPlayer.removeEventListener('ended', handleEnded);
+        videoPlayer.addEventListener('timeupdate', handleTimeUpdate); videoPlayer.addEventListener('pause', handlePause);
+        videoPlayer.addEventListener('ended', handleEnded);
+        setupSubtitles(subtitles, headers ? headers.Referer : null);
+        const qualitySelect = document.getElementById('qualitySelect');
+        if (qualitySelect) qualitySelect.value = sourceUrlToPlay;
+    }
+
+    function handleTimeUpdate() { if (Date.now() - lastProgressSentTime > PROGRESS_UPDATE_INTERVAL) { sendWatchProgress(false); } }
+    function handlePause() { sendWatchProgress(false); }
+    function handleEnded() { sendWatchProgress(true); }  // isFinalUpdate = true
+
+    async function setupSubtitles(subtitlesData, referer) {
+        const oldTracks = videoPlayer.querySelectorAll('track');
+        oldTracks.forEach(track => track.remove());
+        if(videoPlayer.textTracks) { 
+            for (let i = 0; i < videoPlayer.textTracks.length; i++) {
+                 if(videoPlayer.textTracks[i]) videoPlayer.textTracks[i].mode = 'disabled';
+            }
+        }
+        if (subtitlesData && subtitlesData.length > 0) {
+            let firstSubtitlesTrackElement = null; let tracksToLoad = 0; let tracksProcessed = 0;
+            const onTrackProcessed = () => {
+                tracksProcessed++;
+                if (tracksProcessed === tracksToLoad) { enableDefaultOrFirstSubtitle(); }
+            };
+            subtitlesData.forEach(sub => { 
+                if (sub.url && sub.lang && sub.lang.toLowerCase() !== 'thumbnails') {
+                    tracksToLoad++; const trackElement = document.createElement('track');
+                    trackElement.kind = 'subtitles'; trackElement.label = sub.lang;
+                    trackElement.srclang = sub.lang.substring(0, 2).toLowerCase();
+                    let proxiedSubUrl = `/api/proxy/subtitle?url=${encodeURIComponent(sub.url)}`;
+                    if (referer) { proxiedSubUrl += `&referer=${encodeURIComponent(referer)}`; }
+                    trackElement.src = proxiedSubUrl; 
+                    if (sub.lang.toLowerCase().includes('english') && !firstSubtitlesTrackElement) {
+                        trackElement.default = true; firstSubtitlesTrackElement = trackElement;
+                    } else if (!firstSubtitlesTrackElement) { firstSubtitlesTrackElement = trackElement; }
+                    trackElement.addEventListener('load', onTrackProcessed);
+                    trackElement.addEventListener('error', () => { console.error(`Error loading subtitle: ${trackElement.label}`); onTrackProcessed(); });
+                    videoPlayer.appendChild(trackElement);
+                }
+            });
+            if (tracksToLoad === 0) console.log("No valid subtitle tracks to load.");
+        } else { console.log("No subtitles data provided."); }
+    }
+
+    function enableDefaultOrFirstSubtitle() {
+        if (!videoPlayer.textTracks || videoPlayer.textTracks.length === 0) { return; }
+        let defaultEnabled = false;
+        const trackElements = Array.from(videoPlayer.querySelectorAll('track[default]'));
+        if (trackElements.length > 0) {
+            for (let i = 0; i < videoPlayer.textTracks.length; i++) {
+                if (videoPlayer.textTracks[i].label === trackElements[0].label && videoPlayer.textTracks[i].language === trackElements[0].srclang) {
+                    videoPlayer.textTracks[i].mode = 'showing'; defaultEnabled = true; break;
+                }
+            }
+        }
+        if (!defaultEnabled && videoPlayer.textTracks.length > 0) {
+            let firstValidSubTrack = null;
+            for(let i=0; i < videoPlayer.textTracks.length; i++){
+                if(videoPlayer.textTracks[i].kind === 'subtitles' && videoPlayer.textTracks[i].mode !== 'showing'){ firstValidSubTrack = videoPlayer.textTracks[i]; break; }
+                else if (videoPlayer.textTracks[i].kind === 'subtitles' && videoPlayer.textTracks[i].mode === 'showing'){ firstValidSubTrack = null; break; }
+            }
+            if (firstValidSubTrack) firstValidSubTrack.mode = 'showing';
+        }
+    }
+
+    window.addEventListener('beforeunload', (event) => {
+        if (currentUserIsAuthenticated && currentConsumetEpisodeIdForTracking && videoPlayer && (videoPlayer.currentTime > 0 || !videoPlayer.paused)) {
+            const dataBlob = new Blob([JSON.stringify({
+                anime_id: ANILIST_ID_FOR_TRACKING, episode_id: currentConsumetEpisodeIdForTracking,
+                episode_number_str: currentEpisodeNumberStrForTracking, progress_seconds: videoPlayer.currentTime,
+                total_duration_seconds: videoPlayer.duration, anime_title_romaji: ANIME_TITLE_ROMAJI_FOR_TRACKING,
+                anime_cover_image: ANIME_COVER_IMAGE_FOR_TRACKING
+            })], {type : 'application/json'});
+            if (navigator.sendBeacon) { navigator.sendBeacon('/api/update_watch_progress', dataBlob); } 
+        }
+    });
+    
+    // Initial apply of caption styles (can be default or from localStorage if implemented)
+    // applyCaptionStyles(); // Call this if you want default styles applied immediately.
+    // More typically, call it after a video with captions is loaded.
+</script>
+{% endblock %}

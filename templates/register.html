@@ -1,0 +1,55 @@
+{% extends "base_layout.html" %}
+
+{% block title %}{{ title }} - BingeWatch{% endblock %}
+
+{% block head_extra %}
+    <!-- Uses auth form styles from style.css -->
+{% endblock %}
+
+{% block content %}
+<div class="container"> {# General container for centering content #}
+    <div class="auth-form-container">
+        <h2>Create Your BingeWatch Account</h2>
+
+        {# Flash messages are in base_layout.html #}
+
+        <form method="POST" action="" novalidate>
+            {{ form.hidden_tag() }} {# CSRF token #}
+            <div class="form-group">
+                {{ form.username.label }}
+                {{ form.username(class_="form-control", placeholder="Choose a username") }}
+                {% if form.username.errors %}
+                    {% for error in form.username.errors %}<span class="error-message">{{ error }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.email.label }}
+                {{ form.email(class_="form-control", placeholder="Enter your email") }}
+                {% if form.email.errors %}
+                    {% for error in form.email.errors %}<span class="error-message">{{ error }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.password.label }}
+                {{ form.password(class_="form-control", placeholder="Create a password (min. 6 characters)") }}
+                {% if form.password.errors %}
+                    {% for error in form.password.errors %}<span class="error-message">{{ error }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.confirm_password.label }}
+                {{ form.confirm_password(class_="form-control", placeholder="Confirm your password") }}
+                {% if form.confirm_password.errors %}
+                    {% for error in form.confirm_password.errors %}<span class="error-message">{{ error }}</span>{% endfor %}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.submit(class="form-submit-btn") }}
+            </div>
+        </form>
+        <div class="auth-links">
+            Already have an account? <a href="{{ url_for('login_page') }}">Log In</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

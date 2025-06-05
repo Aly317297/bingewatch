@@ -1,0 +1,151 @@
+{% extends "base_layout.html" %}
+
+{% block title %}Download - {{ anime_title }} - Ep {{ episode_number }}{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* ... (CSS styles from previous download_episode.html - mostly the same) ... */
+    .download-page-container { padding: 20px 0; }
+    .download-header { text-align: center; margin-bottom: 30px; }
+    .download-header h2 { color: #e50914; font-size: 2em; }
+    .download-header p { font-size: 1.1em; color: #ccc; }
+    .download-header .back-link { font-size:1em !important; }
+
+    .download-form-section { margin-bottom: 30px; background-color: #1c1c1c; padding: 20px; border-radius: 8px; }
+    .download-form-section h3 { color: #f0f0f0; border-bottom: 1px solid #444; padding-bottom: 10px; margin-top: 0; }
+    
+    .download-form .form-group { margin-bottom: 15px; }
+    .download-form .form-group label { display: block; margin-bottom: 5px; color: #ddd; }
+    .download-form .form-group select, .download-form .form-group input[type="text"] {
+        width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555;
+        background-color: #222; color: #fff; box-sizing: border-box;
+    }
+    .download-form .start-download-btn {
+        background-color: #28a745; color: white; padding: 12px 20px; border-radius: 4px; 
+        font-size: 1.1em; font-weight: bold; border: none; cursor: pointer; 
+        transition: background-color 0.2s ease; display: inline-block; margin-top: 10px;
+    }
+    .download-form .start-download-btn:hover { background-color: #218838; }
+    .download-form .start-download-btn:disabled { background-color: #555; cursor: not-allowed; }
+    
+    .download-options-list { list-style: none; padding: 0; } /* For subtitle links */
+    /* ... (rest of subtitle list styles) ... */
+
+    .download-info-note { background-color: #222; padding: 15px; border-radius: 5px; font-size: 0.9em; color: #bbb; margin-top: 20px; border-left: 3px solid #e50914; }
+    .processing-download-message { text-align: center; padding: 20px; font-size: 1.1em; color: #f0ad4e; background-color: #332c1a; border: 1px solid #5c4f3a; border-radius: 5px; }
+    .error-message-download { text-align: center; color: #ff8a80; font-size: 1.1em; padding: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container download-page-container">
+    <header class="download-header">
+        <h2>Download Episode</h2>
+        <p>{{ anime_title | e }} - Episode {{ episode_number | e }}</p>
+        <p style="margin-top:15px;"><a href="{{ url_for('anime_details_page', anime_id=anilist_id) }}" class="back-link" style="font-size:1em;">« Back to Episode Details</a></p>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages-container" style="position:relative; top:0; margin-bottom:20px;">
+                <ul class="flash-messages">
+                {% for category, message in messages %} <li class="{{ category }}">{{ message }}</li> {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    {% if error_message %}
+        <p class="error-message-download">{{ error_message }}</p>
+    {% elif stream_data and stream_data.sources and stream_data.sources|length > 0 %}
+        <section class="download-form-section">
+            <h3>Download Video File</h3>
+            <form id="downloadProcessForm" class="download-form" method="GET" action="{{ url_for('trigger_video_download') }}">
+                {# These hidden fields are crucial for re-fetching stream links #}
+                <input type="hidden" name="episode_id_for_consumet" value="{{ consumet_episode_id }}">
+                <input type="hidden" name="source_is_zoro_specific" value="{{ 'true' if source_is_zoro_specific else 'false' }}">
+                <input type="hidden" name="dub_audio" value="{{ 'true' if current_dub_preference else 'false' }}">
+
+                {# These are for constructing the final filename and selecting quality #}
+                <input type="hidden" name="anime_title" value="{{ anime_title | e }}">
+                <input type="hidden" name="ep_num" value="{{ episode_number | e }}">
+                
+                <div class="form-group">
+                    <label for="video_quality_select">Select Video Quality:</label>
+                    <select name="quality_label" id="video_quality_select" required>
+                        {% for source in stream_data.sources %}
+                            {% if source.url and source.url.endswith('.m3u8') %}
+                                <option value="{{ source.quality or 'Default' | lower }}">
+                                    {{ source.quality or 'Default' }}
+                                </option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="output_format_select">Select Output Format:</label>
+                    <select name="format" id="output_format_select">
+                        <option value="mp4" selected>MP4</option>
+                        <option value="mkv">MKV</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="start-download-btn" id="startDownloadActualBtn">Start Download & Convert</button>
+                <p id="downloadProcessingInfo" class="processing-download-message" style="display:none;">
+                    Preparing download... This may take several minutes. Your download will begin automatically.
+                </p>
+            </form>
+             <p class="download-info-note">
+                This will process the selected HLS stream on the server and provide a direct download. This can take time.
+            </p>
+        </section>
+
+        <section class="download-section">
+            <h3>Download Subtitle Files (VTT)</h3>
+            <!-- ... (Subtitle download list - same as before, ensure referer is passed to proxy_subtitle if stream_data.headers exists) ... -->
+             {% if stream_data.subtitles and stream_data.subtitles|length > 0 %}
+                <ul class="download-options-list">
+                    {% for sub in stream_data.subtitles %}
+                        {% if sub.url and sub.lang and sub.lang|lower != 'thumbnails' %}
+                        <li>
+                            <span class="item-label">Language: {{ sub.lang }}</span>
+                            <a href="{{ url_for('proxy_subtitle', url=sub.url, referer=stream_data.headers.Referer if stream_data.headers else none) }}?download=true&filename={{ anime_title|urlencode }}_Ep{{ episode_number }}_{{ sub.lang|urlencode }}.vtt" 
+                               class="download-link-btn"
+                               download="{{ anime_title|urlencode }}_Ep{{ episode_number }}_{{ sub.lang|replace(' ','_') }}.vtt">
+                                Download {{ sub.lang }} VTT
+                            </a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No subtitles available for download.</p>
+            {% endif %}
+        </section>
+    {% else %}
+        <p class="error-message-download">Could not load download options: No stream data found.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    const downloadForm = document.getElementById('downloadProcessForm');
+    const startDownloadBtn = document.getElementById('startDownloadActualBtn');
+    const processingInfo = document.getElementById('downloadProcessingInfo');
+
+    if (downloadForm && startDownloadBtn) {
+        downloadForm.addEventListener('submit', function(event) {
+            // The form now correctly submits all necessary data via GET parameters
+            // including the selected quality_label (which is the value of the select)
+            if(processingInfo) processingInfo.style.display = 'block';
+            if(startDownloadBtn) {
+                startDownloadBtn.disabled = true;
+                startDownloadBtn.textContent = 'Processing... Please Wait';
+            }
+            // Allow form to submit
+        });
+    }
+</script>
+{% endblock %}
